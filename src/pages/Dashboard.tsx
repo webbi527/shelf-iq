@@ -11,11 +11,11 @@ const metrics = [
 ];
 
 const tableData = [
-  { sku: "Wireless Earbuds Pro", asin: "B09XYZ1234", yourPrice: 149, compPrice: 139, gap: -6.7, sparkline: [145, 149, 148, 149, 145, 142, 149], compStock: "in-stock" as const, buyBox: "You", status: "winning" as const },
-  { sku: "Smart Watch Band", asin: "B09ABC5678", yourPrice: 89, compPrice: 79, gap: -11.2, sparkline: [92, 89, 85, 89, 88, 89, 89], compStock: "in-stock" as const, buyBox: "Competitor", status: "review" as const },
-  { sku: "USB-C Hub 7-in-1", asin: "B09QRS4321", yourPrice: 129, compPrice: 129, gap: 0, sparkline: [129, 129, 130, 129, 128, 129, 129], compStock: "in-stock" as const, buyBox: "You", status: "matched" as const },
-  { sku: "Portable Charger 20K", asin: "B09MNO8765", yourPrice: 199, compPrice: 185, gap: -7.0, sparkline: [195, 199, 198, 199, 192, 188, 199], compStock: "not-found" as const, buyBox: "You", status: "winning" as const },
-  { sku: "Noise Cancel Buds", asin: "B09TUV2468", yourPrice: 249, compPrice: 239, gap: -4.0, sparkline: [250, 248, 249, 245, 240, 239, 249], compStock: "in-stock" as const, buyBox: "Competitor", status: "review" as const },
+  { sku: "Wireless Earbuds Pro", asin: "B09XYZ1234", competitor: "BeatsPods Ultra", marketplace: "Amazon UAE", yourPrice: 149, compPrice: 139, gap: -6.7, sparkline: [145, 149, 148, 149, 145, 142, 149], compStock: "in-stock" as const, buyBox: "You", status: "winning" as const },
+  { sku: "Smart Watch Band", asin: "B09ABC5678", competitor: "FlexBand Pro", marketplace: "Amazon KSA", yourPrice: 89, compPrice: 79, gap: -11.2, sparkline: [92, 89, 85, 89, 88, 89, 89], compStock: "in-stock" as const, buyBox: "Competitor", status: "review" as const },
+  { sku: "USB-C Hub 7-in-1", asin: "B09QRS4321", competitor: "HubMax 7-Port", marketplace: "Noon UAE", yourPrice: 129, compPrice: 129, gap: 0, sparkline: [129, 129, 130, 129, 128, 129, 129], compStock: "in-stock" as const, buyBox: "You", status: "matched" as const },
+  { sku: "Portable Charger 20K", asin: "B09MNO8765", competitor: "PowerVault 20K", marketplace: "Amazon UAE", yourPrice: 199, compPrice: 185, gap: -7.0, sparkline: [195, 199, 198, 199, 192, 188, 199], compStock: "not-found" as const, buyBox: "You", status: "winning" as const },
+  { sku: "Noise Cancel Buds", asin: "B09TUV2468", competitor: "SilentPods ANC", marketplace: "Noon KSA", yourPrice: 249, compPrice: 239, gap: -4.0, sparkline: [250, 248, 249, 245, 240, 239, 249], compStock: "in-stock" as const, buyBox: "Competitor", status: "review" as const },
 ];
 
 const buyBoxBreakdown = [
