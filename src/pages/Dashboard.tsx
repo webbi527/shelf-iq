@@ -1,7 +1,8 @@
 import MarketFilter from "@/components/MarketFilter";
 import StatusPill from "@/components/StatusPill";
 import MiniSparkline from "@/components/MiniSparkline";
-import { Package, AlertTriangle, ShoppingCart, TrendingUp, ArrowUpRight, ArrowDownRight } from "lucide-react";
+import { Button } from "@/components/ui/button";
+import { Package, AlertTriangle, ShoppingCart, TrendingUp, ArrowUpRight, ArrowDownRight, ExternalLink } from "lucide-react";
 
 const metrics = [
   { label: "SKUs Tracked", value: "47", change: "+3", icon: Package, up: true },
