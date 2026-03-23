@@ -1,20 +1,51 @@
-import { useState } from "react";
+import { createContext, useContext, useState, ReactNode } from "react";
 
-const markets = ["All", "Amazon UAE", "Amazon KSA", "Noon UAE", "Noon KSA"];
+export type Market = "UAE" | "KSA";
+
+interface MarketContextType {
+  market: Market;
+  setMarket: (m: Market) => void;
+  currency: string;
+}
+
+const MarketContext = createContext<MarketContextType>({
+  market: "UAE",
+  setMarket: () => {},
+  currency: "AED",
+});
+
+export const useMarket = () => useContext(MarketContext);
+
+export function MarketProvider({ children }: { children: ReactNode }) {
+  const [market, setMarket] = useState<Market>("UAE");
+  const currency = market === "UAE" ? "AED" : "SAR";
+  return (
+    <MarketContext.Provider value={{ market, setMarket, currency }}>
+      {children}
+    </MarketContext.Provider>
+  );
+}
+
+const options: { value: Market; label: string }[] = [
+  { value: "UAE", label: "UAE — AED" },
+  { value: "KSA", label: "KSA — SAR" },
+];
 
 export default function MarketFilter() {
-  const [active, setActive] = useState("All");
+  const { market, setMarket } = useMarket();
   return (
     <div className="flex gap-1 bg-card border rounded-md p-1">
-      {markets.map((m) => (
+      {options.map((o) => (
         <button
-          key={m}
-          onClick={() => setActive(m)}
+          key={o.value}
+          onClick={() => setMarket(o.value)}
           className={`px-3 py-1.5 text-xs font-medium rounded transition-colors ${
-            active === m ? "bg-primary text-primary-foreground" : "text-muted-foreground hover:bg-muted"
+            market === o.value
+              ? "bg-primary text-primary-foreground"
+              : "text-muted-foreground hover:bg-muted"
           }`}
         >
-          {m}
+          {o.label}
         </button>
       ))}
     </div>
