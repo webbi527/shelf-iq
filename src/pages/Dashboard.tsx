@@ -68,39 +68,61 @@ export default function Dashboard() {
         <div className="px-4 py-3 border-b">
           <h2 className="text-sm font-semibold">Price Comparison</h2>
         </div>
-        <table className="data-table">
-          <thead>
-            <tr>
-              <th>SKU</th>
-              <th>Your Price</th>
-              <th>Comp Price</th>
-              <th>Gap %</th>
-              <th>7-Day Trend</th>
-              <th>Comp Stock</th>
-              <th>Buy Box</th>
-              <th>Status</th>
-            </tr>
-          </thead>
-          <tbody>
-            {tableData.map((row) => (
-              <tr key={row.asin}>
-                <td>
-                  <div className="text-sm font-medium">{row.sku}</div>
-                  <div className="text-xs text-muted-foreground font-mono">{row.asin}</div>
-                </td>
-                <td className="tabular-nums">AED {row.yourPrice}</td>
-                <td className="tabular-nums">AED {row.compPrice}</td>
-                <td className={`tabular-nums font-medium ${row.gap < 0 ? "text-[hsl(var(--status-review))]" : row.gap === 0 ? "text-[hsl(var(--status-matched))]" : "text-[hsl(var(--status-winning))]"}`}>
-                  {row.gap > 0 ? "+" : ""}{row.gap}%
-                </td>
-                <td><MiniSparkline data={row.sparkline} /></td>
-                <td><StatusPill status={row.compStock} /></td>
-                <td className="text-sm">{row.buyBox}</td>
-                <td><StatusPill status={row.status} /></td>
+        <div className="overflow-x-auto">
+          <table className="data-table w-full">
+            <thead>
+              <tr>
+                <th>Your SKU</th>
+                <th>Competitor</th>
+                <th>Marketplace</th>
+                <th>Your Price</th>
+                <th>Comp Price</th>
+                <th>Gap %</th>
+                <th>7-Day Trend</th>
+                <th>Comp Stock</th>
+                <th>Buy Box</th>
+                <th>Status</th>
+                <th></th>
               </tr>
-            ))}
-          </tbody>
-        </table>
+            </thead>
+            <tbody>
+              {tableData.map((row) => (
+                <tr key={row.asin}>
+                  <td>
+                    <div className="text-sm font-medium">{row.sku}</div>
+                    <div className="text-xs text-muted-foreground font-mono">{row.asin}</div>
+                  </td>
+                  <td className="text-sm">{row.competitor}</td>
+                  <td className="text-sm text-muted-foreground">{row.marketplace}</td>
+                  <td className="tabular-nums">AED {row.yourPrice}</td>
+                  <td className="tabular-nums">AED {row.compPrice}</td>
+                  <td>
+                    <div className="flex items-center gap-2">
+                      <span className={`tabular-nums text-sm font-medium ${row.gap < 0 ? "text-[hsl(var(--status-review))]" : row.gap === 0 ? "text-[hsl(var(--status-matched))]" : "text-[hsl(var(--status-winning))]"}`}>
+                        {row.gap > 0 ? "+" : ""}{row.gap}%
+                      </span>
+                      <div className="w-16 h-1.5 bg-muted rounded-full overflow-hidden">
+                        <div
+                          className={`h-full rounded-full ${row.gap < 0 ? "bg-[hsl(var(--status-review))]" : row.gap === 0 ? "bg-[hsl(var(--status-matched))]" : "bg-[hsl(var(--status-winning))]"}`}
+                          style={{ width: `${Math.min(Math.abs(row.gap) * 5, 100)}%` }}
+                        />
+                      </div>
+                    </div>
+                  </td>
+                  <td><MiniSparkline data={row.sparkline} /></td>
+                  <td><StatusPill status={row.compStock} /></td>
+                  <td className="text-sm">{row.buyBox}</td>
+                  <td><StatusPill status={row.status} /></td>
+                  <td>
+                    <Button variant="ghost" size="icon" className="h-7 w-7">
+                      <ExternalLink className="w-3.5 h-3.5" />
+                    </Button>
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
       </div>
 
       {/* Bottom 3 cards */}
