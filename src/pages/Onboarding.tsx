@@ -1,26 +1,165 @@
 import { useState } from "react";
 import { useNavigate } from "react-router-dom";
-import { Check, ChevronRight, Search, GripVertical, X, Plus } from "lucide-react";
+import { Check, ChevronRight, X, Plus, Loader2 } from "lucide-react";
+import { supabase } from "@/integrations/supabase/client";
 
-const steps = ["Brand Details", "Own SKUs", "Competitor SKUs", "SKU Mapping", "Keywords", "Confirm"];
+const stepNames = ["Brand Details", "Own SKUs", "Competitor SKUs", "SKU Mapping", "Keywords", "Confirm"];
+const marketplaces = ["Amazon UAE", "Amazon KSA", "Noon UAE", "Noon KSA"];
 
-const mockSkus = [
-  { asin: "B09XYZ1234", marketplace: "Amazon UAE", name: "Wireless Earbuds Pro", status: "valid" as const },
-  { asin: "B09ABC5678", marketplace: "Noon KSA", name: "Smart Watch Band", status: "valid" as const },
-];
+interface OwnSku {
+  productName: string;
+  asin: string;
+  marketplace: string;
+}
 
-const mockCompSkus = [
-  { asin: "B08DEF9012", marketplace: "Amazon UAE", name: "BeatsPods Ultra", status: "valid" as const },
-  { asin: "B07GHI3456", marketplace: "Noon KSA", name: "FitBand Tracker X", status: "valid" as const },
-  { asin: "B06JKL7890", marketplace: "Amazon KSA", name: "SoundCore Q30", status: "pending" as const },
-];
+interface CompSku {
+  productName: string;
+  asin: string;
+  marketplace: string;
+  brandName: string;
+}
+
+interface Mapping {
+  compIndex: number;
+  ownIndex: number | null;
+}
+
+interface Keyword {
+  text: string;
+  marketplace: string;
+}
 
 export default function Onboarding() {
   const navigate = useNavigate();
   const [step, setStep] = useState(0);
+  const [launching, setLaunching] = useState(false);
+  const [error, setError] = useState("");
 
-  const next = () => { if (step < 5) setStep(step + 1); };
-  const prev = () => { if (step > 0) setStep(step - 1); };
+  // Step 1
+  const [brandName, setBrandName] = useState("");
+  const [category, setCategory] = useState("Electronics");
+  const [markets, setMarkets] = useState<string[]>(["UAE", "KSA"]);
+  const [mplaces, setMplaces] = useState<string[]>(["Amazon", "Noon"]);
+
+  // Step 2
+  const [ownSkus, setOwnSkus] = useState<OwnSku[]>([
+    { productName: "", asin: "", marketplace: "Amazon UAE" },
+  ]);
+
+  // Step 3
+  const [compSkus, setCompSkus] = useState<CompSku[]>([
+    { productName: "", asin: "", marketplace: "Amazon UAE", brandName: "" },
+  ]);
+
+  // Step 4
+  const [mappings, setMappings] = useState<Mapping[]>([]);
+
+  // Step 5
+  const [keywords, setKeywords] = useState<Keyword[]>([]);
+  const [kwInput, setKwInput] = useState("");
+
+  // Sync mappings when entering step 4
+  const goToStep = (s: number) => {
+    if (s === 3) {
+      setMappings(compSkus.map((_, i) => {
+        const existing = mappings.find(m => m.compIndex === i);
+        return existing ?? { compIndex: i, ownIndex: null };
+      }));
+    }
+    setStep(s);
+  };
+
+  const next = () => { if (step < 5) goToStep(step + 1); };
+  const prev = () => { if (step > 0) goToStep(step - 1); };
+
+  const toggleArr = (arr: string[], val: string, setter: (a: string[]) => void) => {
+    setter(arr.includes(val) ? arr.filter(v => v !== val) : [...arr, val]);
+  };
+
+  const handleLaunch = async () => {
+    setError("");
+    setLaunching(true);
+    try {
+      // 1. Create workspace
+      const { data: ws, error: wsErr } = await supabase
+        .from("workspaces")
+        .insert({ name: brandName || "My Workspace", category })
+        .select("id")
+        .single();
+      if (wsErr || !ws) throw wsErr;
+      const wid = ws.id;
+
+      // 2. Insert own SKUs
+      const validOwn = ownSkus.filter(s => s.asin.trim());
+      let insertedOwn: { id: string; asin: string }[] = [];
+      if (validOwn.length) {
+        const { data, error: ownErr } = await supabase
+          .from("own_skus")
+          .insert(validOwn.map(s => ({
+            asin: s.asin.trim(),
+            marketplace: s.marketplace,
+            product_name: s.productName.trim() || null,
+            workspace_id: wid,
+          })))
+          .select("id, asin");
+        if (ownErr) throw ownErr;
+        insertedOwn = data ?? [];
+      }
+
+      // 3. Insert competitor SKUs
+      const validComp = compSkus.filter(s => s.asin.trim());
+      let insertedComp: { id: string; asin: string }[] = [];
+      if (validComp.length) {
+        const { data, error: compErr } = await supabase
+          .from("competitor_skus")
+          .insert(validComp.map(s => ({
+            asin: s.asin.trim(),
+            marketplace: s.marketplace,
+            product_name: s.productName.trim() || null,
+            brand_name: s.brandName.trim() || null,
+            workspace_id: wid,
+          })))
+          .select("id, asin");
+        if (compErr) throw compErr;
+        insertedComp = data ?? [];
+      }
+
+      // 4. Insert mappings
+      const validMappings = mappings.filter(m => m.ownIndex !== null);
+      if (validMappings.length && insertedOwn.length && insertedComp.length) {
+        const mapRows = validMappings.map(m => {
+          const compAsin = compSkus[m.compIndex]?.asin.trim();
+          const ownAsin = ownSkus[m.ownIndex!]?.asin.trim();
+          const compRow = insertedComp.find(r => r.asin === compAsin);
+          const ownRow = insertedOwn.find(r => r.asin === ownAsin);
+          return compRow && ownRow ? {
+            competitor_sku_id: compRow.id,
+            own_sku_id: ownRow.id,
+            workspace_id: wid,
+          } : null;
+        }).filter(Boolean);
+        if (mapRows.length) {
+          const { error: mapErr } = await supabase.from("sku_mappings").insert(mapRows as any);
+          if (mapErr) throw mapErr;
+        }
+      }
+
+      // 5. Insert keywords
+      const validKw = keywords.filter(k => k.text.trim());
+      if (validKw.length) {
+        const { error: kwErr } = await supabase.from("keywords").insert(
+          validKw.map(k => ({ keyword: k.text.trim(), marketplace: k.marketplace, workspace_id: wid }))
+        );
+        if (kwErr) throw kwErr;
+      }
+
+      navigate("/dashboard");
+    } catch (e: any) {
+      setError(e?.message || "Something went wrong. Please try again.");
+    } finally {
+      setLaunching(false);
+    }
+  };
 
   return (
     <div className="min-h-screen bg-background flex flex-col">
@@ -28,7 +167,7 @@ export default function Onboarding() {
       <div className="h-14 border-b bg-card flex items-center px-6 gap-6 shrink-0">
         <span className="font-semibold text-sm">ShelfIQ Setup</span>
         <div className="flex-1 flex items-center gap-2">
-          {steps.map((s, i) => (
+          {stepNames.map((s, i) => (
             <div key={s} className="flex items-center gap-2">
               <div className={`w-6 h-6 rounded-full flex items-center justify-center text-xs font-medium transition-colors ${
                 i < step ? "bg-primary text-primary-foreground" : i === step ? "border-2 border-primary text-primary" : "border text-muted-foreground"
@@ -36,7 +175,7 @@ export default function Onboarding() {
                 {i < step ? <Check className="w-3.5 h-3.5" /> : i + 1}
               </div>
               <span className={`text-xs hidden lg:block ${i === step ? "font-medium" : "text-muted-foreground"}`}>{s}</span>
-              {i < steps.length - 1 && <ChevronRight className="w-3.5 h-3.5 text-muted-foreground" />}
+              {i < stepNames.length - 1 && <ChevronRight className="w-3.5 h-3.5 text-muted-foreground" />}
             </div>
           ))}
         </div>
@@ -44,259 +183,215 @@ export default function Onboarding() {
 
       <div className="flex-1 flex items-start justify-center p-8 overflow-auto">
         <div className="w-full max-w-2xl animate-fade-in" key={step}>
-          {step === 0 && <BrandDetails />}
-          {step === 1 && <SkuTable title="Your SKUs" skus={mockSkus} />}
-          {step === 2 && <SkuTable title="Competitor SKUs" skus={mockCompSkus} />}
-          {step === 3 && <SkuMapping />}
-          {step === 4 && <Keywords />}
-          {step === 5 && <Confirm onLaunch={() => navigate("/dashboard")} />}
+          {step === 0 && (
+            <div className="bg-card border rounded-lg p-6 space-y-5">
+              <h2 className="text-lg font-semibold">Brand Details</h2>
+              <div className="grid grid-cols-2 gap-4">
+                <div>
+                  <label className="text-xs font-medium text-muted-foreground block mb-1.5">Brand Name</label>
+                  <input value={brandName} onChange={e => setBrandName(e.target.value)} className="w-full h-9 px-3 text-sm border rounded-md bg-background focus:outline-none focus:ring-2 focus:ring-primary/30 focus:border-primary" placeholder="Your brand" />
+                </div>
+                <div>
+                  <label className="text-xs font-medium text-muted-foreground block mb-1.5">Category</label>
+                  <select value={category} onChange={e => setCategory(e.target.value)} className="w-full h-9 px-3 text-sm border rounded-md bg-background focus:outline-none focus:ring-2 focus:ring-primary/30">
+                    <option>Electronics</option>
+                    <option>Fashion</option>
+                    <option>Home & Kitchen</option>
+                    <option>Beauty</option>
+                    <option>Sports</option>
+                  </select>
+                </div>
+                <div>
+                  <label className="text-xs font-medium text-muted-foreground block mb-1.5">Markets</label>
+                  <div className="flex gap-2">
+                    {["UAE", "KSA"].map(m => (
+                      <label key={m} className="flex items-center gap-1.5 text-sm">
+                        <input type="checkbox" checked={markets.includes(m)} onChange={() => toggleArr(markets, m, setMarkets)} className="rounded border-input accent-primary" /> {m}
+                      </label>
+                    ))}
+                  </div>
+                </div>
+                <div>
+                  <label className="text-xs font-medium text-muted-foreground block mb-1.5">Marketplaces</label>
+                  <div className="flex gap-2">
+                    {["Amazon", "Noon"].map(m => (
+                      <label key={m} className="flex items-center gap-1.5 text-sm">
+                        <input type="checkbox" checked={mplaces.includes(m)} onChange={() => toggleArr(mplaces, m, setMplaces)} className="rounded border-input accent-primary" /> {m}
+                      </label>
+                    ))}
+                  </div>
+                </div>
+              </div>
+            </div>
+          )}
+
+          {step === 1 && (
+            <div className="bg-card border rounded-lg p-6 space-y-4">
+              <div className="flex items-center justify-between">
+                <h2 className="text-lg font-semibold">Your SKUs</h2>
+                <button onClick={() => setOwnSkus([...ownSkus, { productName: "", asin: "", marketplace: "Amazon UAE" }])} className="h-8 px-3 text-xs font-medium border rounded-md hover:bg-muted flex items-center gap-1 transition-colors">
+                  <Plus className="w-3.5 h-3.5" /> Add SKU
+                </button>
+              </div>
+              <table className="data-table">
+                <thead><tr><th>Product Name</th><th>ASIN</th><th>Marketplace</th><th></th></tr></thead>
+                <tbody>
+                  {ownSkus.map((s, i) => (
+                    <tr key={i}>
+                      <td><input value={s.productName} onChange={e => { const c = [...ownSkus]; c[i] = { ...c[i], productName: e.target.value }; setOwnSkus(c); }} className="w-full h-8 px-2 text-sm border rounded bg-background" placeholder="Product name" /></td>
+                      <td><input value={s.asin} onChange={e => { const c = [...ownSkus]; c[i] = { ...c[i], asin: e.target.value }; setOwnSkus(c); }} className="w-full h-8 px-2 text-xs font-mono border rounded bg-background" placeholder="B0XXXXXXXXX" /></td>
+                      <td>
+                        <select value={s.marketplace} onChange={e => { const c = [...ownSkus]; c[i] = { ...c[i], marketplace: e.target.value }; setOwnSkus(c); }} className="w-full h-8 px-2 text-xs border rounded bg-background">
+                          {marketplaces.map(m => <option key={m}>{m}</option>)}
+                        </select>
+                      </td>
+                      <td><button onClick={() => setOwnSkus(ownSkus.filter((_, j) => j !== i))} className="text-muted-foreground hover:text-destructive"><X className="w-3.5 h-3.5" /></button></td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          )}
+
+          {step === 2 && (
+            <div className="bg-card border rounded-lg p-6 space-y-4">
+              <div className="flex items-center justify-between">
+                <h2 className="text-lg font-semibold">Competitor SKUs</h2>
+                <button onClick={() => setCompSkus([...compSkus, { productName: "", asin: "", marketplace: "Amazon UAE", brandName: "" }])} className="h-8 px-3 text-xs font-medium border rounded-md hover:bg-muted flex items-center gap-1 transition-colors">
+                  <Plus className="w-3.5 h-3.5" /> Add SKU
+                </button>
+              </div>
+              <table className="data-table">
+                <thead><tr><th>Brand</th><th>Product Name</th><th>ASIN</th><th>Marketplace</th><th></th></tr></thead>
+                <tbody>
+                  {compSkus.map((s, i) => (
+                    <tr key={i}>
+                      <td><input value={s.brandName} onChange={e => { const c = [...compSkus]; c[i] = { ...c[i], brandName: e.target.value }; setCompSkus(c); }} className="w-full h-8 px-2 text-sm border rounded bg-background" placeholder="Brand" /></td>
+                      <td><input value={s.productName} onChange={e => { const c = [...compSkus]; c[i] = { ...c[i], productName: e.target.value }; setCompSkus(c); }} className="w-full h-8 px-2 text-sm border rounded bg-background" placeholder="Product name" /></td>
+                      <td><input value={s.asin} onChange={e => { const c = [...compSkus]; c[i] = { ...c[i], asin: e.target.value }; setCompSkus(c); }} className="w-full h-8 px-2 text-xs font-mono border rounded bg-background" placeholder="B0XXXXXXXXX" /></td>
+                      <td>
+                        <select value={s.marketplace} onChange={e => { const c = [...compSkus]; c[i] = { ...c[i], marketplace: e.target.value }; setCompSkus(c); }} className="w-full h-8 px-2 text-xs border rounded bg-background">
+                          {marketplaces.map(m => <option key={m}>{m}</option>)}
+                        </select>
+                      </td>
+                      <td><button onClick={() => setCompSkus(compSkus.filter((_, j) => j !== i))} className="text-muted-foreground hover:text-destructive"><X className="w-3.5 h-3.5" /></button></td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          )}
+
+          {step === 3 && (
+            <div className="bg-card border rounded-lg p-6 space-y-4">
+              <h2 className="text-lg font-semibold">SKU Mapping</h2>
+              <p className="text-sm text-muted-foreground">For each competitor SKU, select which of your products it maps to.</p>
+              <div className="space-y-3">
+                {compSkus.filter(s => s.asin.trim()).map((comp, ci) => (
+                  <div key={ci} className="flex items-center gap-4 border rounded-md p-3">
+                    <div className="flex-1 min-w-0">
+                      <div className="text-sm font-medium truncate">{comp.productName || comp.asin}</div>
+                      <div className="text-xs text-muted-foreground font-mono">{comp.asin} · {comp.marketplace}</div>
+                    </div>
+                    <div className="shrink-0">
+                      <select
+                        value={mappings.find(m => m.compIndex === ci)?.ownIndex ?? ""}
+                        onChange={e => {
+                          const val = e.target.value === "" ? null : Number(e.target.value);
+                          setMappings(mappings.map(m => m.compIndex === ci ? { ...m, ownIndex: val } : m));
+                        }}
+                        className="h-8 px-2 text-xs border rounded bg-background min-w-[180px]"
+                      >
+                        <option value="">— No mapping —</option>
+                        {ownSkus.filter(s => s.asin.trim()).map((own, oi) => (
+                          <option key={oi} value={oi}>{own.productName || own.asin}</option>
+                        ))}
+                      </select>
+                    </div>
+                  </div>
+                ))}
+                {compSkus.filter(s => s.asin.trim()).length === 0 && (
+                  <p className="text-sm text-muted-foreground text-center py-6">Add competitor SKUs in the previous step first.</p>
+                )}
+              </div>
+            </div>
+          )}
+
+          {step === 4 && (
+            <div className="bg-card border rounded-lg p-6 space-y-4">
+              <h2 className="text-lg font-semibold">Tracked Keywords</h2>
+              <div className="flex gap-2">
+                <input
+                  value={kwInput}
+                  onChange={e => setKwInput(e.target.value)}
+                  className="flex-1 h-9 px-3 text-sm border rounded-md bg-background focus:outline-none focus:ring-2 focus:ring-primary/30"
+                  placeholder="Add keyword..."
+                  onKeyDown={e => {
+                    if (e.key === "Enter" && kwInput.trim()) {
+                      setKeywords([...keywords, { text: kwInput.trim(), marketplace: "Amazon UAE" }]);
+                      setKwInput("");
+                    }
+                  }}
+                />
+                <button onClick={() => { if (kwInput.trim()) { setKeywords([...keywords, { text: kwInput.trim(), marketplace: "Amazon UAE" }]); setKwInput(""); } }} className="h-9 px-4 bg-primary text-primary-foreground text-sm rounded-md font-medium hover:opacity-90 active:scale-[0.98] transition-all">Add</button>
+              </div>
+              <div className="flex flex-wrap gap-2">
+                {keywords.map((kw, i) => (
+                  <div key={i} className="flex items-center gap-1.5 px-3 py-1.5 bg-muted rounded-md text-sm">
+                    {kw.text}
+                    <span className="pill-matched text-[10px]">{kw.marketplace}</span>
+                    <X className="w-3 h-3 text-muted-foreground cursor-pointer hover:text-foreground" onClick={() => setKeywords(keywords.filter((_, j) => j !== i))} />
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
+
+          {step === 5 && (
+            <div className="bg-card border rounded-lg p-6 space-y-5">
+              <h2 className="text-lg font-semibold">Ready to launch</h2>
+              <div className="grid grid-cols-2 gap-4 text-sm">
+                <div className="border rounded-md p-4">
+                  <div className="text-xs text-muted-foreground mb-1">Brand</div>
+                  <div className="font-medium">{brandName || "—"}</div>
+                </div>
+                <div className="border rounded-md p-4">
+                  <div className="text-xs text-muted-foreground mb-1">Category</div>
+                  <div className="font-medium">{category}</div>
+                </div>
+                <div className="border rounded-md p-4">
+                  <div className="text-xs text-muted-foreground mb-1">Own SKUs</div>
+                  <div className="font-medium">{ownSkus.filter(s => s.asin.trim()).length} products</div>
+                </div>
+                <div className="border rounded-md p-4">
+                  <div className="text-xs text-muted-foreground mb-1">Competitor SKUs</div>
+                  <div className="font-medium">{compSkus.filter(s => s.asin.trim()).length} products</div>
+                </div>
+                <div className="border rounded-md p-4">
+                  <div className="text-xs text-muted-foreground mb-1">Mappings</div>
+                  <div className="font-medium">{mappings.filter(m => m.ownIndex !== null).length} linked</div>
+                </div>
+                <div className="border rounded-md p-4">
+                  <div className="text-xs text-muted-foreground mb-1">Keywords</div>
+                  <div className="font-medium">{keywords.length} tracked</div>
+                </div>
+              </div>
+              {error && <p className="text-xs text-destructive">{error}</p>}
+              <button onClick={handleLaunch} disabled={launching} className="w-full h-10 bg-primary text-primary-foreground text-sm font-medium rounded-md hover:opacity-90 active:scale-[0.98] transition-all disabled:opacity-60 flex items-center justify-center gap-2">
+                {launching && <Loader2 className="w-4 h-4 animate-spin" />}
+                Launch ShelfIQ 🚀
+              </button>
+            </div>
+          )}
         </div>
       </div>
 
       <div className="h-16 border-t bg-card flex items-center justify-between px-6 shrink-0">
-        <button onClick={prev} disabled={step === 0} className="text-sm font-medium text-muted-foreground disabled:opacity-30 hover:text-foreground transition-colors">
-          Back
-        </button>
-        {step < 5 ? (
-          <button onClick={next} className="h-9 px-5 bg-primary text-primary-foreground text-sm font-medium rounded-md hover:opacity-90 active:scale-[0.98] transition-all">
-            Continue
-          </button>
-        ) : null}
+        <button onClick={prev} disabled={step === 0} className="text-sm font-medium text-muted-foreground disabled:opacity-30 hover:text-foreground transition-colors">Back</button>
+        {step < 5 && (
+          <button onClick={next} className="h-9 px-5 bg-primary text-primary-foreground text-sm font-medium rounded-md hover:opacity-90 active:scale-[0.98] transition-all">Continue</button>
+        )}
       </div>
-    </div>
-  );
-}
-
-function BrandDetails() {
-  return (
-    <div className="bg-card border rounded-lg p-6 space-y-5">
-      <h2 className="text-lg font-semibold">Brand Details</h2>
-      <div className="grid grid-cols-2 gap-4">
-        <div>
-          <label className="text-xs font-medium text-muted-foreground block mb-1.5">Brand Name</label>
-          <input defaultValue="TechGear" className="w-full h-9 px-3 text-sm border rounded-md bg-background focus:outline-none focus:ring-2 focus:ring-primary/30 focus:border-primary" />
-        </div>
-        <div>
-          <label className="text-xs font-medium text-muted-foreground block mb-1.5">Category</label>
-          <select className="w-full h-9 px-3 text-sm border rounded-md bg-background focus:outline-none focus:ring-2 focus:ring-primary/30">
-            <option>Electronics</option>
-            <option>Fashion</option>
-            <option>Home & Kitchen</option>
-          </select>
-        </div>
-        <div>
-          <label className="text-xs font-medium text-muted-foreground block mb-1.5">Markets</label>
-          <div className="flex gap-2">
-            {["UAE", "KSA"].map(m => (
-              <label key={m} className="flex items-center gap-1.5 text-sm">
-                <input type="checkbox" defaultChecked className="rounded border-input accent-primary" /> {m}
-              </label>
-            ))}
-          </div>
-        </div>
-        <div>
-          <label className="text-xs font-medium text-muted-foreground block mb-1.5">Marketplaces</label>
-          <div className="flex gap-2">
-            {["Amazon", "Noon"].map(m => (
-              <label key={m} className="flex items-center gap-1.5 text-sm">
-                <input type="checkbox" defaultChecked className="rounded border-input accent-primary" /> {m}
-              </label>
-            ))}
-          </div>
-        </div>
-      </div>
-    </div>
-  );
-}
-
-function SkuTable({ title, skus }: { title: string; skus: { asin: string; marketplace: string; name: string; status: string }[] }) {
-  return (
-    <div className="bg-card border rounded-lg p-6 space-y-4">
-      <div className="flex items-center justify-between">
-        <h2 className="text-lg font-semibold">{title}</h2>
-        <button className="h-8 px-3 text-xs font-medium border rounded-md hover:bg-muted flex items-center gap-1 transition-colors">
-          <Plus className="w-3.5 h-3.5" /> Add SKU
-        </button>
-      </div>
-      <table className="data-table">
-        <thead>
-          <tr>
-            <th>ASIN</th>
-            <th>Marketplace</th>
-            <th>Product Name</th>
-            <th>Status</th>
-            <th></th>
-          </tr>
-        </thead>
-        <tbody>
-          {skus.map((s) => (
-            <tr key={s.asin}>
-              <td className="font-mono text-xs">{s.asin}</td>
-              <td className="text-xs">{s.marketplace}</td>
-              <td className="text-sm">{s.name}</td>
-              <td>
-                <span className={s.status === "valid" ? "pill-winning" : "pill-warning"}>
-                  {s.status === "valid" ? "Valid" : "Pending"}
-                </span>
-              </td>
-              <td>
-                <button className="text-xs text-primary hover:underline">Validate</button>
-              </td>
-            </tr>
-          ))}
-        </tbody>
-      </table>
-    </div>
-  );
-}
-
-function SkuMapping() {
-  const [mapped, setMapped] = useState<string[]>(["B08DEF9012"]);
-  const unmapped = mockCompSkus.filter(s => !mapped.includes(s.asin));
-
-  return (
-    <div className="bg-card border rounded-lg p-6 space-y-4">
-      <h2 className="text-lg font-semibold">SKU Mapping</h2>
-      <p className="text-sm text-muted-foreground">Drag competitor SKUs onto your SKUs to create mappings.</p>
-      <div className="grid grid-cols-5 gap-4">
-        <div className="col-span-3 space-y-3">
-          {mockSkus.map(own => (
-            <div key={own.asin} className="border rounded-md p-3 min-h-[70px]"
-              onDragOver={(e) => e.preventDefault()}
-              onDrop={() => {
-                const next = unmapped[0];
-                if (next) setMapped([...mapped, next.asin]);
-              }}
-            >
-              <div className="text-sm font-medium">{own.name}</div>
-              <div className="text-xs text-muted-foreground font-mono">{own.asin}</div>
-              <div className="flex gap-1 mt-2 flex-wrap">
-                {mapped.filter((_, i) => i % mockSkus.length === mockSkus.indexOf(own)).map(a => {
-                  const comp = mockCompSkus.find(c => c.asin === a);
-                  return comp ? (
-                    <span key={a} className="pill-matched text-[10px] gap-1 flex items-center">
-                      {comp.name}
-                      <X className="w-3 h-3 cursor-pointer" onClick={() => setMapped(mapped.filter(m => m !== a))} />
-                    </span>
-                  ) : null;
-                })}
-              </div>
-            </div>
-          ))}
-        </div>
-        <div className="col-span-2 border rounded-md p-3">
-          <div className="relative mb-2">
-            <Search className="w-3.5 h-3.5 absolute left-2.5 top-1/2 -translate-y-1/2 text-muted-foreground" />
-            <input className="w-full h-8 pl-8 pr-3 text-xs border rounded-md bg-background" placeholder="Search competitors" />
-          </div>
-          <div className="space-y-1.5">
-            {unmapped.map(s => (
-              <div key={s.asin} draggable className="flex items-center gap-2 p-2 rounded border bg-muted/50 cursor-grab text-xs hover:bg-muted transition-colors">
-                <GripVertical className="w-3.5 h-3.5 text-muted-foreground" />
-                <div>
-                  <div className="font-medium">{s.name}</div>
-                  <div className="text-muted-foreground font-mono">{s.asin}</div>
-                </div>
-              </div>
-            ))}
-            {unmapped.length === 0 && <p className="text-xs text-muted-foreground text-center py-4">All mapped ✓</p>}
-          </div>
-        </div>
-      </div>
-    </div>
-  );
-}
-
-function Keywords() {
-  const [keywords, setKeywords] = useState([
-    { text: "wireless earbuds", marketplace: "Amazon UAE", category: "Electronics" },
-    { text: "bluetooth headphones", marketplace: "Noon KSA", category: "Electronics" },
-  ]);
-  const [input, setInput] = useState("");
-
-  return (
-    <div className="bg-card border rounded-lg p-6 space-y-4">
-      <h2 className="text-lg font-semibold">Tracked Keywords</h2>
-      <div className="flex gap-2">
-        <input
-          value={input}
-          onChange={(e) => setInput(e.target.value)}
-          className="flex-1 h-9 px-3 text-sm border rounded-md bg-background focus:outline-none focus:ring-2 focus:ring-primary/30"
-          placeholder="Add keyword..."
-          onKeyDown={(e) => {
-            if (e.key === "Enter" && input.trim()) {
-              setKeywords([...keywords, { text: input.trim(), marketplace: "Amazon UAE", category: "General" }]);
-              setInput("");
-            }
-          }}
-        />
-        <button
-          onClick={() => { if (input.trim()) { setKeywords([...keywords, { text: input.trim(), marketplace: "Amazon UAE", category: "General" }]); setInput(""); } }}
-          className="h-9 px-4 bg-primary text-primary-foreground text-sm rounded-md font-medium hover:opacity-90 active:scale-[0.98] transition-all"
-        >
-          Add
-        </button>
-      </div>
-      <div className="flex flex-wrap gap-2">
-        {keywords.map((kw, i) => (
-          <div key={i} className="flex items-center gap-1.5 px-3 py-1.5 bg-muted rounded-md text-sm">
-            {kw.text}
-            <span className="pill-matched text-[10px]">{kw.marketplace}</span>
-            <X className="w-3 h-3 text-muted-foreground cursor-pointer hover:text-foreground" onClick={() => setKeywords(keywords.filter((_, j) => j !== i))} />
-          </div>
-        ))}
-      </div>
-      <div>
-        <p className="text-xs text-muted-foreground mb-2">Suggested keywords</p>
-        <div className="flex flex-wrap gap-1.5">
-          {["noise cancelling earbuds", "tws earbuds", "sport headphones", "premium audio"].map(s => (
-            <button
-              key={s}
-              onClick={() => setKeywords([...keywords, { text: s, marketplace: "Amazon UAE", category: "Electronics" }])}
-              className="text-xs px-2.5 py-1 border rounded-md hover:bg-muted transition-colors"
-            >
-              + {s}
-            </button>
-          ))}
-        </div>
-      </div>
-    </div>
-  );
-}
-
-function Confirm({ onLaunch }: { onLaunch: () => void }) {
-  return (
-    <div className="bg-card border rounded-lg p-6 space-y-5">
-      <h2 className="text-lg font-semibold">Ready to launch</h2>
-      <div className="grid grid-cols-2 gap-4 text-sm">
-        <div className="border rounded-md p-4">
-          <div className="text-xs text-muted-foreground mb-1">Brand</div>
-          <div className="font-medium">TechGear</div>
-        </div>
-        <div className="border rounded-md p-4">
-          <div className="text-xs text-muted-foreground mb-1">Markets</div>
-          <div className="font-medium">UAE, KSA</div>
-        </div>
-        <div className="border rounded-md p-4">
-          <div className="text-xs text-muted-foreground mb-1">Own SKUs</div>
-          <div className="font-medium">2 products</div>
-        </div>
-        <div className="border rounded-md p-4">
-          <div className="text-xs text-muted-foreground mb-1">Competitor SKUs</div>
-          <div className="font-medium">3 products</div>
-        </div>
-        <div className="border rounded-md p-4">
-          <div className="text-xs text-muted-foreground mb-1">Keywords</div>
-          <div className="font-medium">2 tracked</div>
-        </div>
-        <div className="border rounded-md p-4">
-          <div className="text-xs text-muted-foreground mb-1">Marketplaces</div>
-          <div className="font-medium">Amazon, Noon</div>
-        </div>
-      </div>
-      <button onClick={onLaunch} className="w-full h-10 bg-primary text-primary-foreground text-sm font-medium rounded-md hover:opacity-90 active:scale-[0.98] transition-all">
-        Launch ShelfIQ 🚀
-      </button>
     </div>
   );
 }
