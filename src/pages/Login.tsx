@@ -1,20 +1,47 @@
 import { useState } from "react";
 import { useNavigate } from "react-router-dom";
-import { Eye, EyeOff } from "lucide-react";
+import { Eye, EyeOff, Loader2 } from "lucide-react";
+import { supabase } from "@/integrations/supabase/client";
 
 export default function Login() {
   const navigate = useNavigate();
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [showPw, setShowPw] = useState(false);
+  const [error, setError] = useState("");
+  const [loading, setLoading] = useState(false);
+
+  const handleAuthAndRedirect = async (authEmail: string, authPassword: string) => {
+    setError("");
+    setLoading(true);
+    try {
+      const { error: authError } = await supabase.auth.signInWithPassword({
+        email: authEmail,
+        password: authPassword,
+      });
+      if (authError) {
+        setError("Invalid email or password.");
+        return;
+      }
+      const { data: workspaces } = await supabase
+        .from("workspaces")
+        .select("id")
+        .limit(1);
+      navigate(workspaces && workspaces.length > 0 ? "/dashboard" : "/onboarding");
+    } catch {
+      setError("Invalid email or password.");
+    } finally {
+      setLoading(false);
+    }
+  };
 
   const handleLogin = (e: React.FormEvent) => {
     e.preventDefault();
-    navigate("/onboarding");
+    handleAuthAndRedirect(email, password);
   };
 
   const handleDemo = () => {
-    navigate("/dashboard");
+    handleAuthAndRedirect("shelf@platformance.io", "demo1234");
   };
 
   return (
@@ -37,6 +64,7 @@ export default function Login() {
               onChange={(e) => setEmail(e.target.value)}
               className="w-full h-9 px-3 text-sm border rounded-md bg-background focus:outline-none focus:ring-2 focus:ring-primary/30 focus:border-primary transition-shadow"
               placeholder="you@company.com"
+              required
             />
           </div>
           <div>
@@ -48,6 +76,7 @@ export default function Login() {
                 onChange={(e) => setPassword(e.target.value)}
                 className="w-full h-9 px-3 pr-9 text-sm border rounded-md bg-background focus:outline-none focus:ring-2 focus:ring-primary/30 focus:border-primary transition-shadow"
                 placeholder="••••••••"
+                required
               />
               <button
                 type="button"
@@ -57,18 +86,22 @@ export default function Login() {
                 {showPw ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
               </button>
             </div>
+            {error && <p className="text-xs text-destructive mt-1.5">{error}</p>}
           </div>
           <button
             type="submit"
-            className="w-full h-9 bg-primary text-primary-foreground text-sm font-medium rounded-md hover:opacity-90 active:scale-[0.98] transition-all"
+            disabled={loading}
+            className="w-full h-9 bg-primary text-primary-foreground text-sm font-medium rounded-md hover:opacity-90 active:scale-[0.98] transition-all disabled:opacity-60 flex items-center justify-center gap-2"
           >
+            {loading && <Loader2 className="w-4 h-4 animate-spin" />}
             Sign in
           </button>
         </form>
 
         <button
           onClick={handleDemo}
-          className="w-full mt-3 h-9 text-sm font-medium text-primary border border-primary/30 rounded-md hover:bg-primary/5 active:scale-[0.98] transition-all"
+          disabled={loading}
+          className="w-full mt-3 h-9 text-sm font-medium text-primary border border-primary/30 rounded-md hover:bg-primary/5 active:scale-[0.98] transition-all disabled:opacity-60"
         >
           Try demo account →
         </button>
