@@ -1,44 +1,248 @@
-import MarketFilter from "@/components/MarketFilter";
+import { useEffect, useState } from "react";
+import MarketFilter, { useMarket } from "@/components/MarketFilter";
 import StatusPill from "@/components/StatusPill";
+import type { Status } from "@/components/StatusPill";
 import MiniSparkline from "@/components/MiniSparkline";
 import { Button } from "@/components/ui/button";
-import { Package, AlertTriangle, ShoppingCart, TrendingUp, ArrowUpRight, ArrowDownRight, ExternalLink } from "lucide-react";
+import { supabase } from "@/integrations/supabase/client";
+import {
+  Package,
+  AlertTriangle,
+  ShoppingCart,
+  TrendingUp,
+  ArrowUpRight,
+  ArrowDownRight,
+  ExternalLink,
+  Loader2,
+  Moon,
+} from "lucide-react";
 
-const metrics = [
-  { label: "SKUs Tracked", value: "47", change: "+3", icon: Package, up: true },
-  { label: "Price Gaps Flagged", value: "12", change: "+2", icon: AlertTriangle, up: true },
-  { label: "Buy Box Status", value: "31/47", change: "Won", icon: ShoppingCart, up: true },
-  { label: "Avg Keyword Rank", value: "4.2", change: "-0.8", icon: TrendingUp, up: false },
-];
+interface TableRow {
+  sku: string;
+  asin: string;
+  competitor: string;
+  marketplace: string;
+  yourPrice: number;
+  compPrice: number;
+  gap: number;
+  sparkline: number[];
+  compStock: Status;
+  buyBox: string;
+  status: Status;
+}
 
-const tableData = [
-  { sku: "Wireless Earbuds Pro", asin: "B09XYZ1234", competitor: "BeatsPods Ultra", marketplace: "Amazon UAE", yourPrice: 149, compPrice: 139, gap: -6.7, sparkline: [145, 149, 148, 149, 145, 142, 149], compStock: "in-stock" as const, buyBox: "You", status: "winning" as const },
-  { sku: "Smart Watch Band", asin: "B09ABC5678", competitor: "FlexBand Pro", marketplace: "Amazon KSA", yourPrice: 89, compPrice: 79, gap: -11.2, sparkline: [92, 89, 85, 89, 88, 89, 89], compStock: "in-stock" as const, buyBox: "Competitor", status: "review" as const },
-  { sku: "USB-C Hub 7-in-1", asin: "B09QRS4321", competitor: "HubMax 7-Port", marketplace: "Noon UAE", yourPrice: 129, compPrice: 129, gap: 0, sparkline: [129, 129, 130, 129, 128, 129, 129], compStock: "in-stock" as const, buyBox: "You", status: "matched" as const },
-  { sku: "Portable Charger 20K", asin: "B09MNO8765", competitor: "PowerVault 20K", marketplace: "Amazon UAE", yourPrice: 199, compPrice: 185, gap: -7.0, sparkline: [195, 199, 198, 199, 192, 188, 199], compStock: "not-found" as const, buyBox: "You", status: "winning" as const },
-  { sku: "Noise Cancel Buds", asin: "B09TUV2468", competitor: "SilentPods ANC", marketplace: "Noon KSA", yourPrice: 249, compPrice: 239, gap: -4.0, sparkline: [250, 248, 249, 245, 240, 239, 249], compStock: "in-stock" as const, buyBox: "Competitor", status: "review" as const },
-];
-
-const buyBoxBreakdown = [
-  { holder: "You", count: 31, pct: 66 },
-  { holder: "Competitor A", count: 9, pct: 19 },
-  { holder: "Competitor B", count: 5, pct: 11 },
-  { holder: "Other", count: 2, pct: 4 },
-];
-
-const opportunities = [
-  { sku: "Smart Watch Band", action: "Lower price by AED 10 to win Buy Box", impact: "High" },
-  { sku: "Noise Cancel Buds", action: "Competitor out of stock on Noon—increase ad spend", impact: "Medium" },
-  { sku: "USB-C Hub 7-in-1", action: "Add coupon to differentiate at same price", impact: "Low" },
-];
-
-const alerts = [
-  { time: "14 min ago", text: "Price drop detected: BeatsPods Ultra now AED 139 (was AED 149)" },
-  { time: "2h ago", text: "Buy Box lost on Smart Watch Band—competitor undercut by 11%" },
-  { time: "5h ago", text: "Keyword 'wireless earbuds' rank improved to #3 on Amazon UAE" },
-];
+interface BuyBoxEntry {
+  holder: string;
+  count: number;
+  pct: number;
+}
 
 export default function Dashboard() {
+  const { market, currency } = useMarket();
+  const [loading, setLoading] = useState(true);
+  const [tableData, setTableData] = useState<TableRow[]>([]);
+  const [buyBoxBreakdown, setBuyBoxBreakdown] = useState<BuyBoxEntry[]>([]);
+  const [skuCount, setSkuCount] = useState(0);
+  const [gapsFlagged, setGapsFlagged] = useState(0);
+  const [buyBoxCount, setBuyBoxCount] = useState("0/0");
+  const [brandName, setBrandName] = useState("");
+  const [hasSnapshots, setHasSnapshots] = useState(true);
+
+  useEffect(() => {
+    loadDashboard();
+  }, [market]);
+
+  async function loadDashboard() {
+    setLoading(true);
+    try {
+      // Get workspace
+      const { data: ws } = await supabase.from("workspaces").select("id, name").limit(1).single();
+      if (!ws) { setLoading(false); return; }
+      const workspaceId = ws.id;
+      setBrandName(ws.name);
+
+      const marketFilter = market === "UAE" ? "%UAE%" : "%KSA%";
+
+      // Get own SKUs for this market
+      const { data: ownSkus } = await supabase
+        .from("own_skus")
+        .select("id, product_name, asin, marketplace")
+        .eq("workspace_id", workspaceId)
+        .ilike("marketplace", marketFilter);
+
+      if (!ownSkus || ownSkus.length === 0) {
+        setSkuCount(0);
+        setTableData([]);
+        setHasSnapshots(false);
+        setLoading(false);
+        return;
+      }
+
+      setSkuCount(ownSkus.length);
+
+      // Get mappings
+      const { data: mappings } = await supabase
+        .from("sku_mappings")
+        .select("own_sku_id, competitor_sku_id")
+        .eq("workspace_id", workspaceId);
+
+      // Get competitor SKUs
+      const { data: compSkus } = await supabase
+        .from("competitor_skus")
+        .select("id, product_name, brand_name, asin, marketplace")
+        .eq("workspace_id", workspaceId);
+
+      // Get all price snapshots for this workspace + market
+      const { data: snapshots } = await supabase
+        .from("price_snapshots")
+        .select("*")
+        .eq("workspace_id", workspaceId)
+        .ilike("marketplace", marketFilter)
+        .order("scraped_at", { ascending: false });
+
+      if (!snapshots || snapshots.length === 0) {
+        setHasSnapshots(false);
+        setTableData([]);
+        setBuyBoxCount(`0/${ownSkus.length}`);
+        setGapsFlagged(0);
+        setBuyBoxBreakdown([]);
+        setLoading(false);
+        return;
+      }
+
+      setHasSnapshots(true);
+
+      // Build latest snapshot per sku_id+sku_type
+      const latestMap = new Map<string, typeof snapshots[0]>();
+      const historyMap = new Map<string, number[]>();
+      for (const s of snapshots) {
+        const key = `${s.sku_id}_${s.sku_type}`;
+        if (!latestMap.has(key)) latestMap.set(key, s);
+        // Collect up to 7 prices for sparkline (own SKU only)
+        if (s.sku_type === "own") {
+          const arr = historyMap.get(s.sku_id) || [];
+          if (arr.length < 7 && s.price != null) arr.push(Number(s.price));
+          historyMap.set(s.sku_id, arr);
+        }
+      }
+
+      const compMap = new Map((compSkus || []).map((c) => [c.id, c]));
+      const mappingsByOwn = new Map<string, string[]>();
+      for (const m of mappings || []) {
+        if (m.own_sku_id && m.competitor_sku_id) {
+          const arr = mappingsByOwn.get(m.own_sku_id) || [];
+          arr.push(m.competitor_sku_id);
+          mappingsByOwn.set(m.own_sku_id, arr);
+        }
+      }
+
+      const rows: TableRow[] = [];
+      let gaps = 0;
+      const buyBoxHolders: Record<string, number> = {};
+      let buyBoxYou = 0;
+
+      for (const own of ownSkus) {
+        const ownSnap = latestMap.get(`${own.id}_own`);
+        const compIds = mappingsByOwn.get(own.id) || [];
+
+        for (const compId of compIds) {
+          const comp = compMap.get(compId);
+          if (!comp) continue;
+          const compSnap = latestMap.get(`${compId}_competitor`);
+
+          const yourPrice = ownSnap?.price ? Number(ownSnap.price) : 0;
+          const compPrice = compSnap?.price ? Number(compSnap.price) : 0;
+          const gap = compPrice > 0 ? Math.round(((yourPrice - compPrice) / compPrice) * 1000) / 10 : 0;
+
+          if (Math.abs(gap) > 10) gaps++;
+
+          const buyBoxHolder = ownSnap?.buy_box_holder || "—";
+          const holderKey = buyBoxHolder === brandName || buyBoxHolder === ws.name ? "You" : buyBoxHolder;
+          buyBoxHolders[holderKey] = (buyBoxHolders[holderKey] || 0) + 1;
+          if (holderKey === "You") buyBoxYou++;
+
+          // Status logic
+          let status: Status;
+          if (gap < 0 && holderKey === "You") {
+            status = "winning";
+          } else if (gap > 10 || (holderKey !== "You" && holderKey !== "—")) {
+            status = "review";
+          } else {
+            status = "matched";
+          }
+
+          const sparkline = (historyMap.get(own.id) || []).reverse();
+
+          rows.push({
+            sku: own.product_name || own.asin,
+            asin: own.asin,
+            competitor: comp.product_name || comp.asin,
+            marketplace: own.marketplace,
+            yourPrice,
+            compPrice,
+            gap,
+            sparkline: sparkline.length > 0 ? sparkline : [yourPrice],
+            compStock: compSnap?.in_stock === false ? "not-found" : "in-stock",
+            buyBox: holderKey,
+            status,
+          });
+        }
+      }
+
+      setTableData(rows);
+      setGapsFlagged(gaps);
+      setBuyBoxCount(`${buyBoxYou}/${ownSkus.length}`);
+
+      // Buy box breakdown
+      const totalBB = Object.values(buyBoxHolders).reduce((a, b) => a + b, 0);
+      const bbEntries: BuyBoxEntry[] = Object.entries(buyBoxHolders)
+        .sort((a, b) => b[1] - a[1])
+        .map(([holder, count]) => ({
+          holder,
+          count,
+          pct: totalBB > 0 ? Math.round((count / totalBB) * 100) : 0,
+        }));
+      setBuyBoxBreakdown(bbEntries);
+    } catch (e) {
+      console.error("Dashboard load error:", e);
+    } finally {
+      setLoading(false);
+    }
+  }
+
+  if (loading) {
+    return (
+      <div className="flex items-center justify-center h-64">
+        <Loader2 className="w-6 h-6 animate-spin text-muted-foreground" />
+      </div>
+    );
+  }
+
+  if (!hasSnapshots) {
+    return (
+      <div className="space-y-6 animate-fade-in">
+        <div className="flex items-center justify-between">
+          <h1 className="text-lg font-semibold">Dashboard</h1>
+          <MarketFilter />
+        </div>
+        <div className="flex flex-col items-center justify-center h-64 bg-card border rounded-md">
+          <Moon className="w-10 h-10 text-muted-foreground mb-3" />
+          <p className="text-sm font-medium">First scrape runs tonight — check back tomorrow morning.</p>
+          <p className="text-xs text-muted-foreground mt-1">
+            We'll collect pricing, Buy Box, and stock data across your tracked SKUs.
+          </p>
+        </div>
+      </div>
+    );
+  }
+
+  const metrics = [
+    { label: "SKUs Tracked", value: String(skuCount), icon: Package },
+    { label: "Price Gaps Flagged", value: String(gapsFlagged), icon: AlertTriangle },
+    { label: "Buy Box Status", value: buyBoxCount, sublabel: "holder at last scrape — not a win rate", icon: ShoppingCart },
+    { label: "Avg Keyword Rank", value: "—", icon: TrendingUp },
+  ];
+
   return (
     <div className="space-y-6 animate-fade-in">
       <div className="flex items-center justify-between">
@@ -55,10 +259,9 @@ export default function Dashboard() {
               <m.icon className="w-4 h-4 text-muted-foreground" />
             </div>
             <div className="text-2xl font-semibold tabular-nums">{m.value}</div>
-            <div className={`flex items-center gap-1 mt-1 text-xs font-medium ${m.up ? "text-[hsl(var(--status-winning))]" : "text-[hsl(var(--status-review))]"}`}>
-              {m.up ? <ArrowUpRight className="w-3 h-3" /> : <ArrowDownRight className="w-3 h-3" />}
-              {m.change}
-            </div>
+            {"sublabel" in m && m.sublabel && (
+              <div className="text-[10px] text-muted-foreground mt-1">{m.sublabel}</div>
+            )}
           </div>
         ))}
       </div>
@@ -86,46 +289,66 @@ export default function Dashboard() {
               </tr>
             </thead>
             <tbody>
-              {tableData.map((row) => (
-                <tr key={row.asin}>
-                  <td>
-                    <div className="text-sm font-medium">{row.sku}</div>
-                    <div className="text-xs text-muted-foreground font-mono">{row.asin}</div>
-                  </td>
-                  <td className="text-sm">{row.competitor}</td>
-                  <td className="text-sm text-muted-foreground">{row.marketplace}</td>
-                  <td className="tabular-nums">AED {row.yourPrice}</td>
-                  <td className="tabular-nums">AED {row.compPrice}</td>
-                  <td>
-                    <div className="flex items-center gap-2">
-                      <span className={`tabular-nums text-sm font-medium ${row.gap < 0 ? "text-[hsl(var(--status-review))]" : row.gap === 0 ? "text-[hsl(var(--status-matched))]" : "text-[hsl(var(--status-winning))]"}`}>
-                        {row.gap > 0 ? "+" : ""}{row.gap}%
-                      </span>
-                      <div className="w-16 h-1.5 bg-muted rounded-full overflow-hidden">
-                        <div
-                          className={`h-full rounded-full ${row.gap < 0 ? "bg-[hsl(var(--status-review))]" : row.gap === 0 ? "bg-[hsl(var(--status-matched))]" : "bg-[hsl(var(--status-winning))]"}`}
-                          style={{ width: `${Math.min(Math.abs(row.gap) * 5, 100)}%` }}
-                        />
+              {tableData.map((row) => {
+                const gapColor =
+                  row.gap > 0
+                    ? "text-[hsl(var(--status-review))]"
+                    : row.gap < 0
+                    ? "text-[hsl(var(--status-winning))]"
+                    : "text-[hsl(var(--status-matched))]";
+                const gapBg =
+                  row.gap > 0
+                    ? "bg-[hsl(var(--status-review))]"
+                    : row.gap < 0
+                    ? "bg-[hsl(var(--status-winning))]"
+                    : "bg-[hsl(var(--status-matched))]";
+
+                // Within ±10% = matched color for gap
+                const absGap = Math.abs(row.gap);
+                const gapDisplayColor = absGap <= 10 && row.gap !== 0 ? "text-[hsl(var(--status-matched))]" : gapColor;
+                const gapDisplayBg = absGap <= 10 && row.gap !== 0 ? "bg-[hsl(var(--status-matched))]" : gapBg;
+
+                return (
+                  <tr key={`${row.asin}-${row.competitor}`}>
+                    <td>
+                      <div className="text-sm font-medium">{row.sku}</div>
+                      <div className="text-xs text-muted-foreground font-mono">{row.asin}</div>
+                    </td>
+                    <td className="text-sm">{row.competitor}</td>
+                    <td className="text-sm text-muted-foreground">{row.marketplace}</td>
+                    <td className="tabular-nums">{currency} {row.yourPrice}</td>
+                    <td className="tabular-nums">{currency} {row.compPrice}</td>
+                    <td>
+                      <div className="flex items-center gap-2">
+                        <span className={`tabular-nums text-sm font-medium ${gapDisplayColor}`}>
+                          {row.gap > 0 ? "+" : ""}{row.gap}%
+                        </span>
+                        <div className="w-16 h-1.5 bg-muted rounded-full overflow-hidden">
+                          <div
+                            className={`h-full rounded-full ${gapDisplayBg}`}
+                            style={{ width: `${Math.min(absGap * 5, 100)}%` }}
+                          />
+                        </div>
                       </div>
-                    </div>
-                  </td>
-                  <td><MiniSparkline data={row.sparkline} /></td>
-                  <td><StatusPill status={row.compStock} /></td>
-                  <td className="text-sm">{row.buyBox}</td>
-                  <td><StatusPill status={row.status} /></td>
-                  <td>
-                    <Button variant="ghost" size="icon" className="h-7 w-7">
-                      <ExternalLink className="w-3.5 h-3.5" />
-                    </Button>
-                  </td>
-                </tr>
-              ))}
+                    </td>
+                    <td><MiniSparkline data={row.sparkline} /></td>
+                    <td><StatusPill status={row.compStock} /></td>
+                    <td className="text-sm">{row.buyBox}</td>
+                    <td><StatusPill status={row.status} /></td>
+                    <td>
+                      <Button variant="ghost" size="icon" className="h-7 w-7">
+                        <ExternalLink className="w-3.5 h-3.5" />
+                      </Button>
+                    </td>
+                  </tr>
+                );
+              })}
             </tbody>
           </table>
         </div>
       </div>
 
-      {/* Bottom 3 cards */}
+      {/* Bottom cards */}
       <div className="grid grid-cols-3 gap-4">
         <div className="bg-card border rounded-md p-4">
           <h3 className="text-sm font-semibold mb-3">Buy Box Breakdown</h3>
@@ -146,29 +369,12 @@ export default function Dashboard() {
 
         <div className="bg-card border rounded-md p-4">
           <h3 className="text-sm font-semibold mb-3">Opportunities</h3>
-          <div className="space-y-3">
-            {opportunities.map((o, i) => (
-              <div key={i} className="text-xs">
-                <div className="font-medium">{o.sku}</div>
-                <div className="text-muted-foreground mt-0.5">{o.action}</div>
-                <span className={`mt-1 inline-block ${o.impact === "High" ? "pill-review" : o.impact === "Medium" ? "pill-warning" : "pill-matched"}`}>
-                  {o.impact} impact
-                </span>
-              </div>
-            ))}
-          </div>
+          <p className="text-xs text-muted-foreground">Opportunities will appear after scrape data is collected.</p>
         </div>
 
         <div className="bg-card border rounded-md p-4">
           <h3 className="text-sm font-semibold mb-3">Recent Alerts</h3>
-          <div className="space-y-3">
-            {alerts.map((a, i) => (
-              <div key={i} className="text-xs">
-                <div className="text-muted-foreground">{a.time}</div>
-                <div className="mt-0.5">{a.text}</div>
-              </div>
-            ))}
-          </div>
+          <p className="text-xs text-muted-foreground">No recent alerts.</p>
         </div>
       </div>
     </div>
