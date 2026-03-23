@@ -1,7 +1,8 @@
 import MarketFilter from "@/components/MarketFilter";
 import StatusPill from "@/components/StatusPill";
 import MiniSparkline from "@/components/MiniSparkline";
-import { Package, AlertTriangle, ShoppingCart, TrendingUp, ArrowUpRight, ArrowDownRight } from "lucide-react";
+import { Button } from "@/components/ui/button";
+import { Package, AlertTriangle, ShoppingCart, TrendingUp, ArrowUpRight, ArrowDownRight, ExternalLink } from "lucide-react";
 
 const metrics = [
   { label: "SKUs Tracked", value: "47", change: "+3", icon: Package, up: true },
@@ -11,11 +12,11 @@ const metrics = [
 ];
 
 const tableData = [
-  { sku: "Wireless Earbuds Pro", asin: "B09XYZ1234", yourPrice: 149, compPrice: 139, gap: -6.7, sparkline: [145, 149, 148, 149, 145, 142, 149], compStock: "in-stock" as const, buyBox: "You", status: "winning" as const },
-  { sku: "Smart Watch Band", asin: "B09ABC5678", yourPrice: 89, compPrice: 79, gap: -11.2, sparkline: [92, 89, 85, 89, 88, 89, 89], compStock: "in-stock" as const, buyBox: "Competitor", status: "review" as const },
-  { sku: "USB-C Hub 7-in-1", asin: "B09QRS4321", yourPrice: 129, compPrice: 129, gap: 0, sparkline: [129, 129, 130, 129, 128, 129, 129], compStock: "in-stock" as const, buyBox: "You", status: "matched" as const },
-  { sku: "Portable Charger 20K", asin: "B09MNO8765", yourPrice: 199, compPrice: 185, gap: -7.0, sparkline: [195, 199, 198, 199, 192, 188, 199], compStock: "not-found" as const, buyBox: "You", status: "winning" as const },
-  { sku: "Noise Cancel Buds", asin: "B09TUV2468", yourPrice: 249, compPrice: 239, gap: -4.0, sparkline: [250, 248, 249, 245, 240, 239, 249], compStock: "in-stock" as const, buyBox: "Competitor", status: "review" as const },
+  { sku: "Wireless Earbuds Pro", asin: "B09XYZ1234", competitor: "BeatsPods Ultra", marketplace: "Amazon UAE", yourPrice: 149, compPrice: 139, gap: -6.7, sparkline: [145, 149, 148, 149, 145, 142, 149], compStock: "in-stock" as const, buyBox: "You", status: "winning" as const },
+  { sku: "Smart Watch Band", asin: "B09ABC5678", competitor: "FlexBand Pro", marketplace: "Amazon KSA", yourPrice: 89, compPrice: 79, gap: -11.2, sparkline: [92, 89, 85, 89, 88, 89, 89], compStock: "in-stock" as const, buyBox: "Competitor", status: "review" as const },
+  { sku: "USB-C Hub 7-in-1", asin: "B09QRS4321", competitor: "HubMax 7-Port", marketplace: "Noon UAE", yourPrice: 129, compPrice: 129, gap: 0, sparkline: [129, 129, 130, 129, 128, 129, 129], compStock: "in-stock" as const, buyBox: "You", status: "matched" as const },
+  { sku: "Portable Charger 20K", asin: "B09MNO8765", competitor: "PowerVault 20K", marketplace: "Amazon UAE", yourPrice: 199, compPrice: 185, gap: -7.0, sparkline: [195, 199, 198, 199, 192, 188, 199], compStock: "not-found" as const, buyBox: "You", status: "winning" as const },
+  { sku: "Noise Cancel Buds", asin: "B09TUV2468", competitor: "SilentPods ANC", marketplace: "Noon KSA", yourPrice: 249, compPrice: 239, gap: -4.0, sparkline: [250, 248, 249, 245, 240, 239, 249], compStock: "in-stock" as const, buyBox: "Competitor", status: "review" as const },
 ];
 
 const buyBoxBreakdown = [
@@ -67,39 +68,61 @@ export default function Dashboard() {
         <div className="px-4 py-3 border-b">
           <h2 className="text-sm font-semibold">Price Comparison</h2>
         </div>
-        <table className="data-table">
-          <thead>
-            <tr>
-              <th>SKU</th>
-              <th>Your Price</th>
-              <th>Comp Price</th>
-              <th>Gap %</th>
-              <th>7-Day Trend</th>
-              <th>Comp Stock</th>
-              <th>Buy Box</th>
-              <th>Status</th>
-            </tr>
-          </thead>
-          <tbody>
-            {tableData.map((row) => (
-              <tr key={row.asin}>
-                <td>
-                  <div className="text-sm font-medium">{row.sku}</div>
-                  <div className="text-xs text-muted-foreground font-mono">{row.asin}</div>
-                </td>
-                <td className="tabular-nums">AED {row.yourPrice}</td>
-                <td className="tabular-nums">AED {row.compPrice}</td>
-                <td className={`tabular-nums font-medium ${row.gap < 0 ? "text-[hsl(var(--status-review))]" : row.gap === 0 ? "text-[hsl(var(--status-matched))]" : "text-[hsl(var(--status-winning))]"}`}>
-                  {row.gap > 0 ? "+" : ""}{row.gap}%
-                </td>
-                <td><MiniSparkline data={row.sparkline} /></td>
-                <td><StatusPill status={row.compStock} /></td>
-                <td className="text-sm">{row.buyBox}</td>
-                <td><StatusPill status={row.status} /></td>
+        <div className="overflow-x-auto">
+          <table className="data-table w-full">
+            <thead>
+              <tr>
+                <th>Your SKU</th>
+                <th>Competitor</th>
+                <th>Marketplace</th>
+                <th>Your Price</th>
+                <th>Comp Price</th>
+                <th>Gap %</th>
+                <th>7-Day Trend</th>
+                <th>Comp Stock</th>
+                <th>Buy Box</th>
+                <th>Status</th>
+                <th></th>
               </tr>
-            ))}
-          </tbody>
-        </table>
+            </thead>
+            <tbody>
+              {tableData.map((row) => (
+                <tr key={row.asin}>
+                  <td>
+                    <div className="text-sm font-medium">{row.sku}</div>
+                    <div className="text-xs text-muted-foreground font-mono">{row.asin}</div>
+                  </td>
+                  <td className="text-sm">{row.competitor}</td>
+                  <td className="text-sm text-muted-foreground">{row.marketplace}</td>
+                  <td className="tabular-nums">AED {row.yourPrice}</td>
+                  <td className="tabular-nums">AED {row.compPrice}</td>
+                  <td>
+                    <div className="flex items-center gap-2">
+                      <span className={`tabular-nums text-sm font-medium ${row.gap < 0 ? "text-[hsl(var(--status-review))]" : row.gap === 0 ? "text-[hsl(var(--status-matched))]" : "text-[hsl(var(--status-winning))]"}`}>
+                        {row.gap > 0 ? "+" : ""}{row.gap}%
+                      </span>
+                      <div className="w-16 h-1.5 bg-muted rounded-full overflow-hidden">
+                        <div
+                          className={`h-full rounded-full ${row.gap < 0 ? "bg-[hsl(var(--status-review))]" : row.gap === 0 ? "bg-[hsl(var(--status-matched))]" : "bg-[hsl(var(--status-winning))]"}`}
+                          style={{ width: `${Math.min(Math.abs(row.gap) * 5, 100)}%` }}
+                        />
+                      </div>
+                    </div>
+                  </td>
+                  <td><MiniSparkline data={row.sparkline} /></td>
+                  <td><StatusPill status={row.compStock} /></td>
+                  <td className="text-sm">{row.buyBox}</td>
+                  <td><StatusPill status={row.status} /></td>
+                  <td>
+                    <Button variant="ghost" size="icon" className="h-7 w-7">
+                      <ExternalLink className="w-3.5 h-3.5" />
+                    </Button>
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
       </div>
 
       {/* Bottom 3 cards */}
