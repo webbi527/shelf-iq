@@ -1,7 +1,8 @@
-import { useEffect, useState } from "react";
+import { useEffect, useState, useRef } from "react";
 import { useMarket } from "@/components/MarketFilter";
 import { supabase } from "@/integrations/supabase/client";
 import { RefreshCw, Loader2 } from "lucide-react";
+import { toast } from "@/hooks/use-toast";
 
 export default function TopBar() {
   const { market } = useMarket();
@@ -9,12 +10,14 @@ export default function TopBar() {
   const [alertCount, setAlertCount] = useState(0);
   const [scraping, setScraping] = useState(false);
   const [hasSnapshots, setHasSnapshots] = useState<boolean | null>(null);
+  const wsIdRef = useRef<string | null>(null);
 
   useEffect(() => {
     (async () => {
       const { data: ws } = await supabase.from("workspaces").select("id, name").limit(1).single();
       if (!ws) return;
       setWsName(ws.name);
+      wsIdRef.current = ws.id;
 
       const since = new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString();
       const { count } = await supabase
@@ -32,9 +35,21 @@ export default function TopBar() {
     })();
   }, []);
 
-  const handleScrape = () => {
+  const handleScrape = async () => {
+    if (!wsIdRef.current) return;
     setScraping(true);
-    setTimeout(() => setScraping(false), 2000);
+    try {
+      const { error } = await supabase.functions.invoke("scrape-skus", {
+        body: { workspace_id: wsIdRef.current },
+      });
+      if (error) throw error;
+      toast({ title: "Scrape complete — dashboard updated" });
+      setTimeout(() => window.location.reload(), 1000);
+    } catch {
+      toast({ title: "Scrape failed — please try again", variant: "destructive" });
+    } finally {
+      setScraping(false);
+    }
   };
 
   return (
