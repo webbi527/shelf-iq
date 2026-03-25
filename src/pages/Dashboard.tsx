@@ -67,7 +67,7 @@ export default function Dashboard() {
       // Get own SKUs for this market
       const { data: ownSkus } = await supabase
         .from("own_skus")
-        .select("id, product_name, asin, marketplace")
+        .select("id, product_name, asin, marketplace, category")
         .eq("workspace_id", workspaceId)
         .ilike("marketplace", marketFilter);
 
@@ -186,6 +186,7 @@ export default function Dashboard() {
             compStock: compSnap?.in_stock === false ? "not-found" : "in-stock",
             buyBox: holderKey,
             status,
+            category: own.category || "Other",
           });
         }
       }
