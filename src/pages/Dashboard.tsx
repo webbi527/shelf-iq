@@ -29,6 +29,7 @@ interface TableRow {
   compStock: Status;
   buyBox: string;
   status: Status;
+  category: string;
 }
 
 interface BuyBoxEntry {
