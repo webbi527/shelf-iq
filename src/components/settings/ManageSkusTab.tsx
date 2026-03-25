@@ -161,7 +161,7 @@ export default function ManageSkusTab({ workspaceId }: { workspaceId: string }) 
               {ownSkus.map((s) => (
                 <tr key={s.id}>
                   <td className="px-4 py-2">{s.product_name || "—"}</td>
-                  <td className="px-4 py-2">{(s as any).category || "—"}</td>
+                  <td className="px-4 py-2">{s.category || "—"}</td>
                   <td className="px-4 py-2 font-mono text-xs">{s.asin}</td>
                   <td className="px-4 py-2">{s.marketplace}</td>
                   <td className="px-4 py-2">
