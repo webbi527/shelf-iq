@@ -29,6 +29,7 @@ interface TableRow {
   compStock: Status;
   buyBox: string;
   status: Status;
+  category: string;
 }
 
 interface BuyBoxEntry {
@@ -66,7 +67,7 @@ export default function Dashboard() {
       // Get own SKUs for this market
       const { data: ownSkus } = await supabase
         .from("own_skus")
-        .select("id, product_name, asin, marketplace")
+        .select("id, product_name, asin, marketplace, category")
         .eq("workspace_id", workspaceId)
         .ilike("marketplace", marketFilter);
 
@@ -185,6 +186,7 @@ export default function Dashboard() {
             compStock: compSnap?.in_stock === false ? "not-found" : "in-stock",
             buyBox: holderKey,
             status,
+            category: own.category || "Other",
           });
         }
       }
@@ -289,7 +291,32 @@ export default function Dashboard() {
               </tr>
             </thead>
             <tbody>
-              {tableData.map((row) => {
+              {(() => {
+                // Group rows by category, "Other" last
+                const groups = new Map<string, TableRow[]>();
+                for (const row of tableData) {
+                  const cat = row.category;
+                  if (!groups.has(cat)) groups.set(cat, []);
+                  groups.get(cat)!.push(row);
+                }
+                const sortedCategories = [...groups.keys()].sort((a, b) => {
+                  if (a === "Other") return 1;
+                  if (b === "Other") return -1;
+                  return a.localeCompare(b);
+                });
+
+                return sortedCategories.flatMap((cat) => {
+                  const catRows = groups.get(cat)!;
+                  return [
+                    <tr key={`cat-${cat}`}>
+                      <td
+                        colSpan={11}
+                        className="px-4 py-2 text-[11px] font-semibold tracking-wider uppercase text-muted-foreground bg-muted/50 border-b"
+                      >
+                        {cat}
+                      </td>
+                    </tr>,
+                    ...catRows.map((row) => {
                 const gapColor =
                   row.gap > 0
                     ? "text-[hsl(var(--status-review))]"
@@ -303,7 +330,6 @@ export default function Dashboard() {
                     ? "bg-[hsl(var(--status-winning))]"
                     : "bg-[hsl(var(--status-matched))]";
 
-                // Within ±10% = matched color for gap
                 const absGap = Math.abs(row.gap);
                 const gapDisplayColor = absGap <= 10 && row.gap !== 0 ? "text-[hsl(var(--status-matched))]" : gapColor;
                 const gapDisplayBg = absGap <= 10 && row.gap !== 0 ? "bg-[hsl(var(--status-matched))]" : gapBg;
@@ -342,7 +368,10 @@ export default function Dashboard() {
                     </td>
                   </tr>
                 );
-              })}
+                    }),
+                  ];
+                });
+              })()}
             </tbody>
           </table>
         </div>
