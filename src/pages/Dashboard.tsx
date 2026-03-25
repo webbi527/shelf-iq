@@ -49,6 +49,8 @@ export default function Dashboard() {
   const [buyBoxCount, setBuyBoxCount] = useState("0/0");
   const [brandName, setBrandName] = useState("");
   const [hasSnapshots, setHasSnapshots] = useState(true);
+  const [avgRank, setAvgRank] = useState("—");
+  const [avgRankSublabel, setAvgRankSublabel] = useState("");
 
   useEffect(() => {
     loadDashboard();
@@ -207,6 +209,34 @@ export default function Dashboard() {
           pct: totalBB > 0 ? Math.round((count / totalBB) * 100) : 0,
         }));
       setBuyBoxBreakdown(bbEntries);
+
+      // Avg Keyword Rank
+      const { data: kwSnaps } = await supabase
+        .from("keyword_snapshots")
+        .select("keyword_id, your_organic_rank, scraped_at")
+        .eq("workspace_id", workspaceId)
+        .order("scraped_at", { ascending: false });
+
+      if (kwSnaps && kwSnaps.length > 0) {
+        const latestByKw = new Map<string, number>();
+        for (const s of kwSnaps) {
+          if (s.keyword_id && !latestByKw.has(s.keyword_id) && s.your_organic_rank != null) {
+            latestByKw.set(s.keyword_id, s.your_organic_rank);
+          }
+        }
+        if (latestByKw.size > 0) {
+          const ranks = [...latestByKw.values()];
+          const avg = ranks.reduce((a, b) => a + b, 0) / ranks.length;
+          setAvgRank(`#${avg.toFixed(1)}`);
+          setAvgRankSublabel(`unweighted avg · ${ranks.length} keywords tracked`);
+        } else {
+          setAvgRank("—");
+          setAvgRankSublabel("");
+        }
+      } else {
+        setAvgRank("—");
+        setAvgRankSublabel("");
+      }
     } catch (e) {
       console.error("Dashboard load error:", e);
     } finally {
@@ -244,7 +274,7 @@ export default function Dashboard() {
     { label: "SKUs Tracked", value: String(skuCount), icon: Package },
     { label: "Price Gaps Flagged", value: String(gapsFlagged), icon: AlertTriangle },
     { label: "Buy Box Status", value: buyBoxCount, sublabel: "holder at last scrape — not a win rate", icon: ShoppingCart },
-    { label: "Avg Keyword Rank", value: "—", icon: TrendingUp },
+    { label: "Avg Keyword Rank", value: avgRank, sublabel: avgRankSublabel || undefined, icon: TrendingUp },
   ];
 
   return (
