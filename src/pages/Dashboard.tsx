@@ -21,6 +21,7 @@ interface TableRow {
   sku: string;
   asin: string;
   competitor: string;
+  competitorBrand: string;
   marketplace: string;
   yourPrice: number;
   compPrice: number;
@@ -178,6 +179,7 @@ export default function Dashboard() {
             sku: own.product_name || own.asin,
             asin: own.asin,
             competitor: comp.product_name || comp.asin,
+            competitorBrand: comp.brand_name || "",
             marketplace: own.marketplace,
             yourPrice,
             compPrice,
@@ -340,7 +342,12 @@ export default function Dashboard() {
                       <div className="text-sm font-medium">{row.sku}</div>
                       <div className="text-xs text-muted-foreground font-mono">{row.asin}</div>
                     </td>
-                    <td className="text-sm">{row.competitor}</td>
+                    <td>
+                      <div className="text-sm font-medium">{row.competitor}</div>
+                      {row.competitorBrand && (
+                        <div className="text-xs text-muted-foreground">{row.competitorBrand}</div>
+                      )}
+                    </td>
                     <td className="text-sm text-muted-foreground">{row.marketplace}</td>
                     <td className="tabular-nums">{currency} {row.yourPrice}</td>
                     <td className="tabular-nums">{currency} {row.compPrice}</td>
