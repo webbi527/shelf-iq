@@ -11,6 +11,7 @@ const MARKETPLACES = ["Amazon UAE", "Amazon KSA", "Noon UAE", "Noon KSA"];
 interface OwnSku {
   id: string;
   product_name: string | null;
+  category: string | null;
   asin: string;
   marketplace: string;
 }
@@ -52,7 +53,7 @@ export default function ManageSkusTab({ workspaceId }: { workspaceId: string }) 
   const fetchAll = async () => {
     setLoading(true);
     const [{ data: own }, { data: comp }, { data: maps }] = await Promise.all([
-      supabase.from("own_skus").select("id, product_name, asin, marketplace").eq("workspace_id", workspaceId),
+      supabase.from("own_skus").select("id, product_name, category, asin, marketplace").eq("workspace_id", workspaceId),
       supabase.from("competitor_skus").select("id, product_name, brand_name, asin, marketplace").eq("workspace_id", workspaceId),
       supabase.from("sku_mappings").select("id, own_sku_id, competitor_sku_id").eq("workspace_id", workspaceId),
     ]);
