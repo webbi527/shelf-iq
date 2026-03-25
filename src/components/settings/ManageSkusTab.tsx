@@ -11,6 +11,7 @@ const MARKETPLACES = ["Amazon UAE", "Amazon KSA", "Noon UAE", "Noon KSA"];
 interface OwnSku {
   id: string;
   product_name: string | null;
+  category: string | null;
   asin: string;
   marketplace: string;
 }
@@ -37,6 +38,7 @@ export default function ManageSkusTab({ workspaceId }: { workspaceId: string }) 
 
   // Own SKU form
   const [ownName, setOwnName] = useState("");
+  const [ownCategory, setOwnCategory] = useState("");
   const [ownAsin, setOwnAsin] = useState("");
   const [ownMp, setOwnMp] = useState("");
   const [ownAdding, setOwnAdding] = useState(false);
@@ -51,7 +53,7 @@ export default function ManageSkusTab({ workspaceId }: { workspaceId: string }) 
   const fetchAll = async () => {
     setLoading(true);
     const [{ data: own }, { data: comp }, { data: maps }] = await Promise.all([
-      supabase.from("own_skus").select("id, product_name, asin, marketplace").eq("workspace_id", workspaceId),
+      supabase.from("own_skus").select("id, product_name, category, asin, marketplace").eq("workspace_id", workspaceId),
       supabase.from("competitor_skus").select("id, product_name, brand_name, asin, marketplace").eq("workspace_id", workspaceId),
       supabase.from("sku_mappings").select("id, own_sku_id, competitor_sku_id").eq("workspace_id", workspaceId),
     ]);
@@ -68,6 +70,7 @@ export default function ManageSkusTab({ workspaceId }: { workspaceId: string }) 
     setOwnAdding(true);
     const { error } = await supabase.from("own_skus").insert({
       product_name: ownName || null,
+      category: ownCategory || null,
       asin: ownAsin,
       marketplace: ownMp,
       workspace_id: workspaceId,
@@ -75,7 +78,7 @@ export default function ManageSkusTab({ workspaceId }: { workspaceId: string }) 
     setOwnAdding(false);
     if (error) { toast({ title: "Failed to add SKU", description: error.message, variant: "destructive" }); return; }
     toast({ title: "Own SKU added" });
-    setOwnName(""); setOwnAsin(""); setOwnMp("");
+    setOwnName(""); setOwnCategory(""); setOwnAsin(""); setOwnMp("");
     fetchAll();
   };
 
@@ -148,6 +151,7 @@ export default function ManageSkusTab({ workspaceId }: { workspaceId: string }) 
             <thead>
               <tr className="border-b text-muted-foreground text-left">
                 <th className="px-4 py-2 font-medium">Product Name</th>
+                <th className="px-4 py-2 font-medium">Category</th>
                 <th className="px-4 py-2 font-medium">ASIN</th>
                 <th className="px-4 py-2 font-medium">Marketplace</th>
                 <th className="px-4 py-2 w-10" />
@@ -157,6 +161,7 @@ export default function ManageSkusTab({ workspaceId }: { workspaceId: string }) 
               {ownSkus.map((s) => (
                 <tr key={s.id}>
                   <td className="px-4 py-2">{s.product_name || "—"}</td>
+                  <td className="px-4 py-2">{s.category || "—"}</td>
                   <td className="px-4 py-2 font-mono text-xs">{s.asin}</td>
                   <td className="px-4 py-2">{s.marketplace}</td>
                   <td className="px-4 py-2">
@@ -167,13 +172,14 @@ export default function ManageSkusTab({ workspaceId }: { workspaceId: string }) 
                 </tr>
               ))}
               {ownSkus.length === 0 && (
-                <tr><td colSpan={4} className="px-4 py-4 text-center text-muted-foreground text-xs">No own SKUs added yet</td></tr>
+                <tr><td colSpan={5} className="px-4 py-4 text-center text-muted-foreground text-xs">No own SKUs added yet</td></tr>
               )}
             </tbody>
           </table>
         </div>
         <div className="flex items-end gap-2">
           <Input placeholder="Product name" value={ownName} onChange={(e) => setOwnName(e.target.value)} className="h-8 text-xs flex-1" />
+          <Input placeholder="e.g. Mayonnaise" value={ownCategory} onChange={(e) => setOwnCategory(e.target.value)} className="h-8 text-xs w-32" />
           <Input placeholder="ASIN" value={ownAsin} onChange={(e) => setOwnAsin(e.target.value)} className="h-8 text-xs w-32" />
           <Select value={ownMp} onValueChange={setOwnMp}>
             <SelectTrigger className="h-8 text-xs w-40"><SelectValue placeholder="Marketplace" /></SelectTrigger>
