@@ -49,6 +49,8 @@ export default function Dashboard() {
   const [buyBoxCount, setBuyBoxCount] = useState("0/0");
   const [brandName, setBrandName] = useState("");
   const [hasSnapshots, setHasSnapshots] = useState(true);
+  const [avgRank, setAvgRank] = useState("—");
+  const [avgRankSublabel, setAvgRankSublabel] = useState("");
 
   useEffect(() => {
     loadDashboard();
