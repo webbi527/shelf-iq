@@ -5,12 +5,20 @@ import { supabase } from "@/integrations/supabase/client";
 import { RefreshCw, Loader2 } from "lucide-react";
 import { toast } from "@/hooks/use-toast";
 
+function formatScrapedAt(date: Date): string {
+  if (isToday(date)) {
+    return `Today ${format(date, "h:mm a")}`;
+  }
+  return formatDistanceToNow(date, { addSuffix: true });
+}
+
 export default function TopBar() {
   const { market } = useMarket();
   const [wsName, setWsName] = useState("");
   const [alertCount, setAlertCount] = useState(0);
   const [scraping, setScraping] = useState(false);
   const [lastScrapedLabel, setLastScrapedLabel] = useState<string | null>(null);
+  const wsIdRef = useRef<string | null>(null);
 
   useEffect(() => {
     (async () => {
@@ -27,11 +35,19 @@ export default function TopBar() {
         .gte("triggered_at", since);
       setAlertCount(count || 0);
 
-      const { count: snapCount } = await supabase
+      const { data: lastSnap } = await supabase
         .from("price_snapshots")
-        .select("id", { count: "exact", head: true })
-        .eq("workspace_id", ws.id);
-      setHasSnapshots((snapCount ?? 0) > 0);
+        .select("scraped_at")
+        .eq("workspace_id", ws.id)
+        .order("scraped_at", { ascending: false })
+        .limit(1)
+        .single();
+
+      if (lastSnap?.scraped_at) {
+        setLastScrapedLabel(formatScrapedAt(new Date(lastSnap.scraped_at)));
+      } else {
+        setLastScrapedLabel("Never scraped");
+      }
     })();
   }, []);
 
@@ -52,6 +68,8 @@ export default function TopBar() {
     }
   };
 
+  const hasSnapshots = lastScrapedLabel !== null && lastScrapedLabel !== "Never scraped";
+
   return (
     <header className="h-12 border-b bg-card flex items-center justify-between px-5 shrink-0">
       <div className="flex items-center gap-2">
@@ -63,7 +81,7 @@ export default function TopBar() {
       <div className="flex items-center gap-4">
         <div className="flex items-center gap-1.5 text-xs text-muted-foreground">
           <span className={`w-1.5 h-1.5 rounded-full ${hasSnapshots ? "bg-[hsl(var(--status-winning))]" : "bg-muted-foreground/40"}`} />
-          {hasSnapshots === null ? "…" : hasSnapshots ? "Scraped today 06:00 AM" : "Never scraped"}
+          {lastScrapedLabel === null ? "…" : lastScrapedLabel}
         </div>
         <button
           onClick={handleScrape}
