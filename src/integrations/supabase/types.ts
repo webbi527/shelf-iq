@@ -245,6 +245,7 @@ export type Database = {
       own_skus: {
         Row: {
           asin: string
+          category: string | null
           created_at: string | null
           id: string
           marketplace: string
@@ -254,6 +255,7 @@ export type Database = {
         }
         Insert: {
           asin: string
+          category?: string | null
           created_at?: string | null
           id?: string
           marketplace: string
@@ -263,6 +265,7 @@ export type Database = {
         }
         Update: {
           asin?: string
+          category?: string | null
           created_at?: string | null
           id?: string
           marketplace?: string
