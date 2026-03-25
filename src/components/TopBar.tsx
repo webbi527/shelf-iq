@@ -10,8 +10,7 @@ export default function TopBar() {
   const [wsName, setWsName] = useState("");
   const [alertCount, setAlertCount] = useState(0);
   const [scraping, setScraping] = useState(false);
-  const [hasSnapshots, setHasSnapshots] = useState<boolean | null>(null);
-  const wsIdRef = useRef<string | null>(null);
+  const [lastScrapedLabel, setLastScrapedLabel] = useState<string | null>(null);
 
   useEffect(() => {
     (async () => {
