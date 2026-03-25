@@ -274,7 +274,7 @@ export default function Dashboard() {
     { label: "SKUs Tracked", value: String(skuCount), icon: Package },
     { label: "Price Gaps Flagged", value: String(gapsFlagged), icon: AlertTriangle },
     { label: "Buy Box Status", value: buyBoxCount, sublabel: "holder at last scrape — not a win rate", icon: ShoppingCart },
-    { label: "Avg Keyword Rank", value: "—", icon: TrendingUp },
+    { label: "Avg Keyword Rank", value: avgRank, sublabel: avgRankSublabel || undefined, icon: TrendingUp },
   ];
 
   return (
