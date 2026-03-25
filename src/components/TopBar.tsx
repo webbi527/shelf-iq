@@ -1,4 +1,5 @@
 import { useEffect, useState, useRef } from "react";
+import { formatDistanceToNow, isToday, format } from "date-fns";
 import { useMarket } from "@/components/MarketFilter";
 import { supabase } from "@/integrations/supabase/client";
 import { RefreshCw, Loader2 } from "lucide-react";
